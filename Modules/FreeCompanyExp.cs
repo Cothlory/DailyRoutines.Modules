@@ -5,6 +5,8 @@ using Dalamud.Game.ClientState.Conditions;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using ImGuiNET;
+using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 
 namespace DailyRoutines.ModulesPublic;
 
@@ -13,8 +15,8 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     public override ModuleInfo Info { get; } = new()
     {
         Title = "更精确的部队经验",
-        Description = "显示部队当前经验和升级所需经验，并在获得经验时进行提醒",
-        Category = ModuleCategories.General,
+        Description = "在部队界面显示部队当前经验和升级所需经验，并在获得经验时进行提醒",
+        Category = ModuleCategories.UIOptimization,
         Author = ["Cothlory"]
     };
 
@@ -24,11 +26,12 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     protected override void Init()
     {
         ModuleConfig = LoadConfig<Config>() ?? new();
-        // 注册框架更新事件，每30秒检查一次
         FrameworkManager.Register(OnUpdate, throttleMS: 30_000);
         DService.Condition.ConditionChange += OnConditionChanged;
+        DService.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "FreeCompany", OnFreeCompanyAddonSetup);
+        DService.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, "FreeCompany", OnFreeCompanyAddonFinalize);
         Overlay ??= new(this);
-        Overlay.IsOpen = ModuleConfig.ShowOverlay;
+        Overlay.IsOpen = false;
         UpdateFCExp();
     }
 
@@ -36,8 +39,21 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     {
         FrameworkManager.Unregister(OnUpdate);
         DService.Condition.ConditionChange -= OnConditionChanged;
-        
+        DService.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "FreeCompany", OnFreeCompanyAddonSetup);
+        DService.AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, "FreeCompany", OnFreeCompanyAddonFinalize);
         base.Uninit();
+    }
+
+    private void OnFreeCompanyAddonSetup(AddonEvent type, AddonArgs args)
+    {
+        if (Overlay != null)
+            Overlay.IsOpen = true;
+    }
+
+    private void OnFreeCompanyAddonFinalize(AddonEvent type, AddonArgs args)
+    {
+        if (Overlay != null)
+            Overlay.IsOpen = false;
     }
 
     private void OnUpdate(Dalamud.Plugin.Services.IFramework framework)
@@ -50,7 +66,6 @@ public unsafe class FreeCompanyExp : DailyModuleBase
 
     private void OnConditionChanged(ConditionFlag flag, bool value)
     {
-        // 当完成任务、副本等活动时检查FC经验变化（仅在启用模块时）
         if (ModuleConfig.IsEnabled && flag == ConditionFlag.BoundByDuty && !value)
             CheckFCExpGain();
     }
@@ -86,7 +101,7 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         }
         catch (Exception ex)
         {
-            DService.Log.Error($"获取FC数据失败: {ex.Message}");
+            DService.Log.Error($"获取部队数据失败: {ex.Message}");
             return (0, 0, 0);
         }
     }
@@ -121,21 +136,12 @@ public unsafe class FreeCompanyExp : DailyModuleBase
 
     protected override void ConfigUI()
     {
-        if (ImGui.Checkbox("显示悬浮窗口", ref ModuleConfig.ShowOverlay))
-        {
-            Overlay.IsOpen = ModuleConfig.ShowOverlay;
-            SaveConfig(ModuleConfig);
-        }
-        ImGui.SameLine();
-        ImGui.TextDisabled("(?)");
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("显示一个悬浮窗口实时显示部队经验信息");
         if (ImGui.Checkbox("启用经验变化通知", ref ModuleConfig.IsEnabled))
             SaveConfig(ModuleConfig);
         ImGui.SameLine();
         ImGui.TextDisabled("(?)");
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("开启后会监控FC经验变化并发送通知\n关闭后仍可查看FC数据，但不会发送经验获得通知");
+            ImGui.SetTooltip("监控部队经验变化并发送通知");
         ImGui.BeginDisabled(!ModuleConfig.IsEnabled);
         ImGui.SetNextItemWidth(200f * GlobalFontScale);
         if (ImGui.DragInt("通知阈值", ref ModuleConfig.MinExpGainThreshold, 10f, 1, 10000))
@@ -143,7 +149,7 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         ImGui.SameLine();
         ImGui.TextDisabled("(?)");
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("只有经验变化量超过此数值时才会发送通知");
+            ImGui.SetTooltip("经验变化量超过此数值时发送通知");
         ImGui.EndDisabled();
 
         ImGui.Separator();
@@ -181,28 +187,15 @@ public unsafe class FreeCompanyExp : DailyModuleBase
 
         ImGui.SetWindowSize(new(300f * GlobalFontScale, 120f * GlobalFontScale));
         
-        ImGui.Text($"部队等级: {level}");
-        ImGui.Text($"当前经验: {currentExp:N0}/{maxExp:N0}");
-        
+        var progress = 0f;
         if (maxExp > 0)
-        {
-            var progress = (float)currentExp / maxExp;
-            ImGui.ProgressBar(progress, new(280f * GlobalFontScale, 20f * GlobalFontScale));
-        }
-        
-        if (maxExp > currentExp)
-        {
-            var remaining = maxExp - currentExp;
-            ImGui.Text($"升级还需: {remaining:N0}");
-        }
-        else if (maxExp > 0)
-            ImGui.TextColored(new(0f, 1f, 0f, 1f), "已达到当前等级上限!");
+            progress = (float)currentExp / maxExp;
+        ImGui.Text($"{currentExp:N0}/{maxExp:N0} ({progress:P1}%)");
     }
 
     private class Config : ModuleConfiguration
     {
         public bool IsEnabled = true;
-        public bool ShowOverlay = true;
         public int MinExpGainThreshold = 1000;
     }
 }
