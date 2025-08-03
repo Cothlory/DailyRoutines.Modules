@@ -35,6 +35,7 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         Overlay ??= new(this);
         Overlay.IsOpen = false;
         UpdateFCExp();
+        CheckFreeCompanyWindowStatus();
     }
 
     protected override void Uninit()
@@ -160,6 +161,29 @@ public unsafe class FreeCompanyExp : DailyModuleBase
             return (Vector2.Zero, Vector2.Zero);
         }
     }
+    
+    private void CheckFreeCompanyWindowStatus()
+    {
+        try
+        {
+            var stage = AtkStage.Instance();
+            if (stage == null) return;
+
+            var unitManager = stage->RaptureAtkUnitManager;
+            if (unitManager == null) return;
+
+            var fcAddon = unitManager->GetAddonByName("FreeCompany");
+            if (fcAddon != null && fcAddon->IsVisible)
+            {
+                if (Overlay != null)
+                    Overlay.IsOpen = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            DService.Log.Debug($"检查部队窗口状态失败: {ex.Message}");
+        }
+    }
 
     protected override void ConfigUI()
     {
@@ -199,20 +223,20 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         }
 
         ImGui.Separator();
-        
+
         var (currentExp, maxExp, level) = GetCurrentFCData();
         if (currentExp > 0 || maxExp > 0)
         {
             ImGui.Text($"当前等级: {level}");
             ImGui.Text($"当前经验: {currentExp:N0} / {maxExp:N0}");
-            
+
             if (maxExp > 0)
             {
                 var progress = (float)currentExp / maxExp;
-                ImGui.ProgressBar(progress, new(300f * GlobalFontScale, 20f * GlobalFontScale), 
+                ImGui.ProgressBar(progress, new(300f * GlobalFontScale, 20f * GlobalFontScale),
                     $"{progress:P1}");
             }
-            
+
             if (maxExp > currentExp)
             {
                 var remaining = maxExp - currentExp;
