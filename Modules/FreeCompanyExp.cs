@@ -7,6 +7,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using ImGuiNET;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
+using System.Numerics;
 
 namespace DailyRoutines.ModulesPublic;
 
@@ -22,6 +23,7 @@ public unsafe class FreeCompanyExp : DailyModuleBase
 
     private Config ModuleConfig = null!;
     private uint LastFCExp;
+    private Vector2 RelativePosition = new Vector2(10, 10);
 
     protected override void Init()
     {
@@ -134,6 +136,31 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         }
     }
 
+    private (Vector2 position, Vector2 size) GetFreeCompanyWindowInfo()
+    {
+        try
+        {
+            var stage = AtkStage.Instance();
+            if (stage == null) return (Vector2.Zero, Vector2.Zero);
+
+            var unitManager = stage->RaptureAtkUnitManager;
+            if (unitManager == null) return (Vector2.Zero, Vector2.Zero);
+
+            var fcAddon = unitManager->GetAddonByName("FreeCompany");
+            if (fcAddon == null) return (Vector2.Zero, Vector2.Zero);
+
+            var position = new Vector2(fcAddon->X, fcAddon->Y);
+            var size = new Vector2(fcAddon->GetScaledWidth(true), fcAddon->GetScaledHeight(true));
+
+            return (position, size);
+        }
+        catch (Exception ex)
+        {
+            DService.Log.Debug($"获取部队窗口信息失败: {ex.Message}");
+            return (Vector2.Zero, Vector2.Zero);
+        }
+    }
+
     protected override void ConfigUI()
     {
         if (ImGui.Checkbox("启用经验变化通知", ref ModuleConfig.IsEnabled))
@@ -151,6 +178,25 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("经验变化量超过此数值时发送通知");
         ImGui.EndDisabled();
+
+        ImGui.Separator();
+
+        ImGui.Text("悬浮窗偏移:");
+        ImGui.SetNextItemWidth(150f * GlobalFontScale);
+        if (ImGui.DragFloat2("", ref RelativePosition, 1f, -500f, 500f))
+        {
+            ModuleConfig.RelativePositionX = RelativePosition.X;
+            ModuleConfig.RelativePositionY = RelativePosition.Y;
+            SaveConfig(ModuleConfig);
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("重置"))
+        {
+            RelativePosition = new Vector2(10, 10);
+            ModuleConfig.RelativePositionX = RelativePosition.X;
+            ModuleConfig.RelativePositionY = RelativePosition.Y;
+            SaveConfig(ModuleConfig);
+        }
 
         ImGui.Separator();
         
@@ -184,18 +230,42 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     {
         var (currentExp, maxExp, level) = GetCurrentFCData();
         if (currentExp == 0 && maxExp == 0) return;
+        RelativePosition = new Vector2(ModuleConfig.RelativePositionX, ModuleConfig.RelativePositionY);
+        var (fcWindowPos, fcWindowSize) = GetFreeCompanyWindowInfo();
+        if (fcWindowPos == Vector2.Zero) return;
+        var overlayPos = new Vector2(
+            fcWindowPos.X + fcWindowSize.X + RelativePosition.X,
+            fcWindowPos.Y + RelativePosition.Y
+        );
+        var overlaySize = new Vector2(280f * GlobalFontScale, 60f * GlobalFontScale);
+        ImGui.SetNextWindowPos(overlayPos, ImGuiCond.Always);
+        ImGui.SetNextWindowSize(overlaySize, ImGuiCond.Always);
+        var flags = ImGuiWindowFlags.NoMove | 
+                   ImGuiWindowFlags.NoResize | 
+                   ImGuiWindowFlags.NoCollapse |
+                   ImGuiWindowFlags.NoTitleBar |
+                   ImGuiWindowFlags.AlwaysAutoResize;
 
-        ImGui.SetWindowSize(new(300f * GlobalFontScale, 120f * GlobalFontScale));
-        
-        var progress = 0f;
-        if (maxExp > 0)
-            progress = (float)currentExp / maxExp;
-        ImGui.Text($"{currentExp:N0}/{maxExp:N0} ({progress:P1}%)");
+        if (ImGui.Begin($"##FCExpOverlay_{GetHashCode()}", flags))
+        {
+            var progress = 0f;
+            if (maxExp > 0)
+                progress = (float)currentExp / maxExp;
+            ImGui.Text($"{currentExp:N0} / {maxExp:N0} ({progress:P1}%)");
+            if (maxExp > currentExp)
+            {
+                var remaining = maxExp - currentExp;
+                ImGui.Text($"还需: {remaining:N0}");
+            }
+        }
+        ImGui.End();
     }
 
     private class Config : ModuleConfiguration
     {
         public bool IsEnabled = true;
         public int MinExpGainThreshold = 1000;
+        public float RelativePositionX = 10f;
+        public float RelativePositionY = 10f;
     }
 }
