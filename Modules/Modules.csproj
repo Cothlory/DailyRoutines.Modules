@@ -1,13 +1,14 @@
-﻿<Project Sdk="Dalamud.CN.NET.Sdk/11.3.0">
+﻿<Project Sdk="Dalamud.CN.NET.Sdk/12.0.2">
 
     <PropertyGroup>
-        <Authors>AtmoOmen</Authors>
-        <Version>1.0.0.0</Version>
-        <Description>Module Template For Daily Routines</Description>
-        <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+        <Authors>Cothlory</Authors>
+        <Version>0.1.0.0</Version>
+        <Description>Personal Modules For Daily Routines</Description>
+        <PackageLicenseExpression>AGPL-3.0</PackageLicenseExpression>
         <IsPackable>false</IsPackable>
-        <Title>Daily Routines Module Template</Title>
+        <Title>Cothlory's DR Module</Title>
         <Configurations>Debug;Release</Configurations>
+        <AssemblyName>Cothlory.DR.Module</AssemblyName>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -28,13 +29,13 @@
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-        <NoWarn>1701;1702;CS0414;CS8601;CS8602;CS8604;CS8603;IDE1006;IDE0300;MSB3270;MSB324;CS0649;CA2211;CS8509;CS8625;MSB3305;CS8618;CS8600;CS8605;CS8620</NoWarn>
+        <NoWarn>1701;1702;CS0414;CS8601;CS8602;CS8604;CS8603;IDE1006;IDE0300;MSB3270;MSB324;CS0649;CA2211;CS8509;CS8625;MSB3305;CS8618;CS8600;CS8605;CS8620;MSB3277</NoWarn>
         <DebugType>none</DebugType>
         <Optimize>True</Optimize>
         <DebugSymbols>false</DebugSymbols>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-        <NoWarn>1701;1702;CS0414;CS8601;CS8602;CS8604;CS8603;IDE1006;IDE0300;MSB3270;MSB324;CS0649;CA2211;CS8509;CS8625;MSB3305;CS8618;CS8600;CS8605;CS8620</NoWarn>
+        <NoWarn>1701;1702;CS0414;CS8601;CS8602;CS8604;CS8603;IDE1006;IDE0300;MSB3270;MSB324;CS0649;CA2211;CS8509;CS8625;MSB3305;CS8618;CS8600;CS8605;CS8620;MSB3277</NoWarn>
         <DebugType>none</DebugType>
     </PropertyGroup>
 
@@ -46,9 +47,8 @@
         <PackageReference Include="System.CodeDom" Version="9.0.1" />
     </ItemGroup>
 
-    <!-- 修改成你自己的 DR 路径 -->
     <PropertyGroup>
-        <DailyRoutinesPath>D:\Personal\Document\GitHub\DailyRoutines\bin\Debug\</DailyRoutinesPath>
+        <DailyRoutinesPath></DailyRoutinesPath>
     </PropertyGroup>
 
     <ItemGroup>
