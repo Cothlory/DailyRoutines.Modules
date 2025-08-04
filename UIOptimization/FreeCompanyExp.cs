@@ -47,11 +47,6 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     private void OnFreeCompanyAddonSetup(AddonEvent type, AddonArgs args)
     {
         var addon = (AtkUnitBase*)FreeCompany;
-        if (addon == null) 
-        {
-            DService.Log.Warning("FreeCompanyExp: Addon is null");
-            return;
-        }
         CreateExpNodes(addon);
         UpdateExpDisplay();
     }
@@ -76,26 +71,18 @@ public unsafe class FreeCompanyExp : DailyModuleBase
 
     private (uint currentExp, uint maxExp, byte level) GetCurrentFCData()
     {
-        try
-        {
-            var stage = AtkStage.Instance();
-            if (stage == null) return (0, 0, 0);
+        var stage = AtkStage.Instance();
+        if (stage == null) return (0, 0, 0);
 
-            var fcExchangeArray = stage->GetNumberArrayData(NumberArrayType.FreeCompanyExchange);
-            if (fcExchangeArray == null || fcExchangeArray->AtkArrayData.Size < 10)
-                return (0, 0, 0);
-                
-            var currentExp = (uint)fcExchangeArray->IntArray[6];
-            var maxExp = (uint)fcExchangeArray->IntArray[7];
-            var level = (byte)fcExchangeArray->IntArray[4];
-
-            return (currentExp, maxExp, level);
-        }
-        catch (Exception ex)
-        {
-            DService.Log.Error($"Failed to get FC data: {ex.Message}");
+        var fcExchangeArray = stage->GetNumberArrayData(NumberArrayType.FreeCompanyExchange);
+        if (fcExchangeArray == null || fcExchangeArray->AtkArrayData.Size < 10)
             return (0, 0, 0);
-        }
+            
+        var currentExp = (uint)fcExchangeArray->IntArray[6];
+        var maxExp = (uint)fcExchangeArray->IntArray[7];
+        var level = (byte)fcExchangeArray->IntArray[4];
+
+        return (currentExp, maxExp, level);
     }
 
     private unsafe void CreateExpNodes(AtkUnitBase* addon)
@@ -109,18 +96,19 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         var originalTextColor = new Vector4(204f/255f, 204f/255f, 204f/255f, 1f);
         byte originalFontSize = 14;
         
-        var node13 = addon->GetNodeById(13);
-        if (node13 != null && node13->Type == NodeType.Text)
+        var expLevelTextNode = addon->GetNodeById(13);
+        if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text)
         {
-            var textNode13 = (AtkTextNode*)node13;
+            var textNode = (AtkTextNode*)expLevelTextNode;
             originalTextColor = new Vector4(
-                textNode13->TextColor.R / 255f,
-                textNode13->TextColor.G / 255f,
-                textNode13->TextColor.B / 255f,
-                textNode13->TextColor.A / 255f
+                textNode->TextColor.R / 255f,
+                textNode->TextColor.G / 255f,
+                textNode->TextColor.B / 255f,
+                textNode->TextColor.A / 255f
             );
-            originalFontSize = textNode13->FontSize;
+            originalFontSize = textNode->FontSize;
         }
+        ModifyExpBar(addon);
         
         ExpTextNode = new TextNode
         {
@@ -133,23 +121,60 @@ public unsafe class FreeCompanyExp : DailyModuleBase
             Position = new Vector2(350f, 125f),
             NodeId = 999001
         };
+        Service.AddonController.AttachNode(ExpTextNode, rootNode);
+    }
+    
+    private unsafe void ModifyExpBar(AtkUnitBase* addon)
+    {
+        var currentExpBarNode = addon->GetNodeById(14);
+        var originalExpBarWidth = currentExpBarNode != null ? currentExpBarNode->Width : 0;
+        var expBarOffset = originalExpBarWidth;
         
-        try
+        // 进度条
+        if (currentExpBarNode != null)
         {
-            Service.AddonController.AttachNode(ExpTextNode, rootNode);
+            var originalWidth = currentExpBarNode->Width;
+            var newWidth = (ushort)(originalWidth * 2f);
+            var originalX = currentExpBarNode->X;
+            var newX = (short)(originalX - originalWidth);
+            currentExpBarNode->SetWidth(newWidth);
+            currentExpBarNode->SetXFloat(newX);
+            var nineGridNode = (AtkNineGridNode*)currentExpBarNode;
+            nineGridNode->AtkResNode.SetWidth(newWidth);
+            nineGridNode->AtkResNode.SetXFloat(newX);
+            currentExpBarNode->DrawFlags |= 0x1;
         }
-        catch (Exception ex)
+        
+        // 背景条
+        var maxExpBarNode = addon->GetNodeById(15);
+        if (maxExpBarNode != null)
         {
-            DService.Log.Error($"FreeCompanyExp: Failed to create nodes: {ex.Message}");
-            ExpTextNode?.Dispose();
-            ExpTextNode = null;
+            var originalWidth = maxExpBarNode->Width;
+            var newWidth = (ushort)(originalWidth * 2f);
+            var originalX = maxExpBarNode->X;
+            var newX = (short)(originalX - originalWidth);
+            maxExpBarNode->SetWidth(newWidth);
+            maxExpBarNode->SetXFloat(newX);
+            var nineGridNode = (AtkNineGridNode*)maxExpBarNode;
+            nineGridNode->AtkResNode.SetWidth(newWidth);
+            nineGridNode->AtkResNode.SetXFloat(newX);
+            maxExpBarNode->DrawFlags |= 0x1;
+        }
+        
+        // 等级
+        var expLevelTextNode = addon->GetNodeById(13);
+        if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text)
+        {
+            var originalX = expLevelTextNode->X;
+            var newX = (short)(originalX - expBarOffset);
+            expLevelTextNode->SetXFloat(newX);
+            expLevelTextNode->DrawFlags |= 0x1;
         }
     }
     
     private void UpdateExpDisplay()
     {
         if (ExpTextNode == null) return;
-        
         var (currentExp, maxExp, level) = GetCurrentFCData();
         if (currentExp == 0 && maxExp == 0) return;
         var progress = maxExp > 0 ? (float)currentExp / maxExp * 100 : 0f;
@@ -158,23 +183,16 @@ public unsafe class FreeCompanyExp : DailyModuleBase
 
     private void TryRefreshFCData()
     {
-        try
-        {
-            var infoModule = InfoModule.Instance();
-            if (infoModule == null) return;
+        var infoModule = InfoModule.Instance();
+        if (infoModule == null) return;
 
-            var fcInfoProxy = infoModule->GetInfoProxyById(InfoProxyId.FreeCompany);
-            if (fcInfoProxy == null) return;
-            var localPlayer = DService.ClientState.LocalPlayer;
-            if (localPlayer != null && localPlayer.EntityId != 0)
-            {
-                var fcProxy = (InfoProxyFreeCompany*)fcInfoProxy;
-                fcProxy->RequestDataForCharacter(localPlayer.EntityId);
-            }
-        }
-        catch (Exception ex)
+        var fcInfoProxy = infoModule->GetInfoProxyById(InfoProxyId.FreeCompany);
+        if (fcInfoProxy == null) return;
+        var localPlayer = DService.ClientState.LocalPlayer;
+        if (localPlayer != null && localPlayer.EntityId != 0)
         {
-            DService.Log.Debug($"Failed to refresh FC data: {ex.Message}");
+            var fcProxy = (InfoProxyFreeCompany*)fcInfoProxy;
+            fcProxy->RequestDataForCharacter(localPlayer.EntityId);
         }
     }
 }
