@@ -4,7 +4,6 @@ using DailyRoutines.Abstracts;
 using DailyRoutines.Managers;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
-using Dalamud.Game.ClientState.Conditions;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using ImGuiNET;
@@ -16,32 +15,28 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     public override ModuleInfo Info { get; } = new()
     {
         Title = "更精确的部队经验",
-        Description = "在部队界面显示部队当前经验和升级所需经验，并在获得经验时进行提醒",
+        Description = "在部队界面显示部队当前经验和升级所需经验",
         Category = ModuleCategories.UIOptimization,
         Author = ["Cothlory"]
     };
 
     private Config ModuleConfig = null!;
-    private uint LastFCExp;
     private Vector2 RelativePosition = new(10, 10);
 
     protected override void Init()
     {
         ModuleConfig = LoadConfig<Config>() ?? new();
         FrameworkManager.Register(OnUpdate, throttleMS: 30_000);
-        DService.Condition.ConditionChange += OnConditionChanged;
         DService.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "FreeCompany", OnFreeCompanyAddonSetup);
         DService.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, "FreeCompany", OnFreeCompanyAddonFinalize);
         Overlay ??= new(this);
         Overlay.IsOpen = false;
-        UpdateFCExp();
         CheckFreeCompanyWindowStatus();
     }
 
     protected override void Uninit()
     {
         FrameworkManager.Unregister(OnUpdate);
-        DService.Condition.ConditionChange -= OnConditionChanged;
         DService.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "FreeCompany", OnFreeCompanyAddonSetup);
         DService.AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, "FreeCompany", OnFreeCompanyAddonFinalize);
         base.Uninit();
@@ -64,26 +59,6 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         if (!DService.ClientState.IsLoggedIn) return;
         
         TryRefreshFCData();
-        if (ModuleConfig.IsEnabled)
-            CheckFCExpGain();
-    }
-
-    private void OnConditionChanged(ConditionFlag flag, bool value)
-    {
-        if (ModuleConfig.IsEnabled && flag == ConditionFlag.BoundByDuty && !value)
-            CheckFCExpGain();
-    }
-
-    private void CheckFCExpGain()
-    {
-        var (currentExp, maxExp, level) = GetCurrentFCData();
-        if (currentExp > LastFCExp)
-        {
-            var gained = currentExp - LastFCExp;
-            if (gained > ModuleConfig.MinExpGainThreshold)
-                NotificationInfo($"获得部队经验: {gained:N0}");
-        }
-        LastFCExp = currentExp;
     }
 
     private (uint currentExp, uint maxExp, byte level) GetCurrentFCData()
@@ -108,12 +83,6 @@ public unsafe class FreeCompanyExp : DailyModuleBase
             DService.Log.Error($"获取部队数据失败: {ex.Message}");
             return (0, 0, 0);
         }
-    }
-
-    private void UpdateFCExp()
-    {
-        var (currentExp, _, _) = GetCurrentFCData();
-        LastFCExp = currentExp;
     }
 
     private void TryRefreshFCData()
@@ -188,27 +157,6 @@ public unsafe class FreeCompanyExp : DailyModuleBase
 
     protected override void ConfigUI()
     {
-        if (ImGui.Checkbox("启用经验变化通知", ref ModuleConfig.IsEnabled))
-            SaveConfig(ModuleConfig);
-            
-        ImGui.SameLine();
-        ImGui.TextDisabled("(?)");
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("监控部队经验变化并发送通知");
-            
-        ImGui.BeginDisabled(!ModuleConfig.IsEnabled);
-        ImGui.SetNextItemWidth(200f * GlobalFontScale);
-        if (ImGui.DragInt("通知阈值", ref ModuleConfig.MinExpGainThreshold, 10f, 1, 10000))
-            SaveConfig(ModuleConfig);
-            
-        ImGui.SameLine();
-        ImGui.TextDisabled("(?)");
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("经验变化量超过此数值时发送通知");
-        ImGui.EndDisabled();
-
-        ImGui.Separator();
-
         ImGui.Text("悬浮窗偏移:");
         ImGui.SetNextItemWidth(150f * GlobalFontScale);
         if (ImGui.DragFloat2("", ref RelativePosition, 1f, -500f, 500f))
@@ -296,8 +244,6 @@ public unsafe class FreeCompanyExp : DailyModuleBase
 
     private class Config : ModuleConfiguration
     {
-        public bool IsEnabled = true;
-        public int MinExpGainThreshold = 1000;
         public float RelativePositionX = 10f;
         public float RelativePositionY = 10f;
     }
