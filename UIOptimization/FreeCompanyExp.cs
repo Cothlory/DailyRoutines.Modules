@@ -108,9 +108,25 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         var rootNode = addon->RootNode;
         if (rootNode == null) return;
         
-        // 原生UI样式 - node ID 13: text color = RGBA(204,204,204,255) | font size = 14
         var originalTextColor = new Vector4(204f/255f, 204f/255f, 204f/255f, 1f);
         byte originalFontSize = 14;
+        
+        var node13 = addon->GetNodeById(13);
+        if (node13 != null && node13->Type == NodeType.Text)
+        {
+            var textNode13 = (AtkTextNode*)node13;
+            originalTextColor = new Vector4(
+                textNode13->TextColor.R / 255f,
+                textNode13->TextColor.G / 255f,
+                textNode13->TextColor.B / 255f,
+                textNode13->TextColor.A / 255f
+            );
+            originalFontSize = textNode13->FontSize;
+        }
+        else
+        {
+            DService.Log.Warning("FreeCompanyExp: 未找到节点13，使用默认样式");
+        }
         
         ExpTextNode = new TextNode
         {
