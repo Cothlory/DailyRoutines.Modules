@@ -73,7 +73,7 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     {
         if (!DService.ClientState.IsLoggedIn) return;
         
-        if (IsAddonAndNodesReady(FreeCompany) && ExpTextNode != null)
+        if (IsAddonAndNodesReady(FreeCompany))
         {
             TryRefreshFCData();
             var (currentExp, maxExp, level) = GetCurrentFCData();
@@ -110,7 +110,9 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text)
         {
             var textNode = (AtkTextNode*)expLevelTextNode;
-            originalLevelText = textNode->NodeText.ToString();
+            var currentText = textNode->NodeText.ToString();
+            if (string.IsNullOrEmpty(originalLevelText) || !currentText.Contains("经验值"))
+                originalLevelText = currentText;
         }
         
         ModifyExpBar(addon);
@@ -195,12 +197,19 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         
         var (currentExp, maxExp, level) = GetCurrentFCData();
         if (currentExp == 0 && maxExp == 0) return;
+        if (string.IsNullOrEmpty(originalLevelText))
+        {
+            var textNode = (AtkTextNode*)expLevelTextNode;
+            var currentText = textNode->NodeText.ToString();
+            if (!currentText.Contains("经验值"))
+                originalLevelText = currentText;
+        }
         
         var progress = maxExp > 0 ? (float)currentExp / maxExp * 100 : 0f;
         var expText = $"经验值 {currentExp:N0}/{maxExp:N0} ({progress:F1}%)";
         var newText = $"{originalLevelText}    {expText}";
-        var textNode = (AtkTextNode*)expLevelTextNode;
-        textNode->SetText(newText);
+        var textNode2 = (AtkTextNode*)expLevelTextNode;
+        textNode2->SetText(newText);
         expLevelTextNode->DrawFlags |= 0x1;
     }
     
