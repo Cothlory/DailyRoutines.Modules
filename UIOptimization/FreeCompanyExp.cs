@@ -24,6 +24,11 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     private static TextNode? ExpTextNode;
     private static uint lastCurrentExp = 0;
     private static uint lastMaxExp = 0;
+    private static ushort originalExpBar14Width = 0;
+    private static ushort originalExpBar15Width = 0;
+    private static float originalExpBar14X = 0;
+    private static float originalExpBar15X = 0;
+    private static float originalExpLevelTextX = 0;
 
     protected override void Init()
     {
@@ -40,9 +45,9 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         FrameworkManager.Unregister(OnUpdate);
         DService.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "FreeCompany", OnFreeCompanyAddonSetup);
         DService.AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, "FreeCompany", OnFreeCompanyAddonFinalize);
+        RestoreOriginalUI();
         ExpTextNode?.Dispose();
         ExpTextNode = null;
-        
         base.Uninit();
     }
 
@@ -140,6 +145,21 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     private unsafe void ModifyExpBar(AtkUnitBase* addon)
     {
         var currentExpBarNode = addon->GetNodeById(14);
+        var maxExpBarNode = addon->GetNodeById(15);
+        var expLevelTextNode = addon->GetNodeById(13);
+        if (currentExpBarNode != null)
+        {
+            originalExpBar14Width = currentExpBarNode->Width;
+            originalExpBar14X = currentExpBarNode->X;
+        }
+        if (maxExpBarNode != null)
+        {
+            originalExpBar15Width = maxExpBarNode->Width;
+            originalExpBar15X = maxExpBarNode->X;
+        }
+        if (expLevelTextNode != null)
+            originalExpLevelTextX = expLevelTextNode->X;
+        
         var originalExpBarWidth = currentExpBarNode != null ? currentExpBarNode->Width : 0;
         var expBarOffset = originalExpBarWidth;
         
@@ -159,7 +179,6 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         }
         
         // 背景条
-        var maxExpBarNode = addon->GetNodeById(15);
         if (maxExpBarNode != null)
         {
             var originalWidth = maxExpBarNode->Width;
@@ -175,7 +194,6 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         }
         
         // 等级
-        var expLevelTextNode = addon->GetNodeById(13);
         if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text)
         {
             var originalX = expLevelTextNode->X;
@@ -196,6 +214,43 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         var newText = $"经验值 {currentExp:N0}/{maxExp:N0} ({progress:F1}%)";
         
         ExpTextNode.Text = newText;
+    }
+    
+    private unsafe void RestoreOriginalUI()
+    {
+        if (!IsAddonAndNodesReady(FreeCompany)) return;
+        var addon = (AtkUnitBase*)FreeCompany;
+        var currentExpBarNode = addon->GetNodeById(14);
+        var maxExpBarNode = addon->GetNodeById(15);
+        var expLevelTextNode = addon->GetNodeById(13);
+        if (currentExpBarNode != null && originalExpBar14Width > 0)
+        {
+            currentExpBarNode->SetWidth(originalExpBar14Width);
+            currentExpBarNode->SetXFloat(originalExpBar14X);
+            var nineGridNode = (AtkNineGridNode*)currentExpBarNode;
+            nineGridNode->AtkResNode.SetWidth(originalExpBar14Width);
+            nineGridNode->AtkResNode.SetXFloat(originalExpBar14X);
+            currentExpBarNode->DrawFlags |= 0x1;
+        }
+        if (maxExpBarNode != null && originalExpBar15Width > 0)
+        {
+            maxExpBarNode->SetWidth(originalExpBar15Width);
+            maxExpBarNode->SetXFloat(originalExpBar15X);
+            var nineGridNode = (AtkNineGridNode*)maxExpBarNode;
+            nineGridNode->AtkResNode.SetWidth(originalExpBar15Width);
+            nineGridNode->AtkResNode.SetXFloat(originalExpBar15X);
+            maxExpBarNode->DrawFlags |= 0x1;
+        }
+        if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text && originalExpBar14Width > 0)
+        {
+            expLevelTextNode->SetXFloat(originalExpLevelTextX);
+            expLevelTextNode->DrawFlags |= 0x1;
+        }
+        originalExpBar14Width = 0;
+        originalExpBar15Width = 0;
+        originalExpBar14X = 0f;
+        originalExpBar15X = 0f;
+        originalExpLevelTextX = 0f;
     }
 
     private void TryRefreshFCData()
