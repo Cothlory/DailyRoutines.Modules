@@ -8,12 +8,12 @@ using KamiToolKit.Nodes;
 
 namespace DailyRoutines.ModulesPublic;
 
-public unsafe class FreeCompanyExp : DailyModuleBase
+public unsafe class AccurateFreeCompanyExp : DailyModuleBase
 {
     public override ModuleInfo Info { get; } = new()
     {
-        Title = "更精确的部队经验",
-        Description = "在部队界面显示部队当前经验和升级所需经验的精确数值",
+        Title = "精确部队经验",
+        Description = "在部队界面显示部队经验的精确数值",
         Category = ModuleCategories.UIOptimization,
         Author = ["Cothlory"]
     };
