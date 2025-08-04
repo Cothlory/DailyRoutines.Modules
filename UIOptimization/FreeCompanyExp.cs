@@ -1,13 +1,13 @@
 using System;
+using System.Numerics;
 using DailyRoutines.Abstracts;
 using DailyRoutines.Managers;
+using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.ClientState.Conditions;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using ImGuiNET;
-using Dalamud.Game.Addon.Lifecycle;
-using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
-using System.Numerics;
 
 namespace DailyRoutines.ModulesPublic;
 
@@ -23,7 +23,7 @@ public unsafe class FreeCompanyExp : DailyModuleBase
 
     private Config ModuleConfig = null!;
     private uint LastFCExp;
-    private Vector2 RelativePosition = new Vector2(10, 10);
+    private Vector2 RelativePosition = new(10, 10);
 
     protected override void Init()
     {
@@ -62,6 +62,7 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     private void OnUpdate(Dalamud.Plugin.Services.IFramework framework)
     {
         if (!DService.ClientState.IsLoggedIn) return;
+        
         TryRefreshFCData();
         if (ModuleConfig.IsEnabled)
             CheckFCExpGain();
@@ -95,10 +96,10 @@ public unsafe class FreeCompanyExp : DailyModuleBase
             var fcExchangeArray = stage->GetNumberArrayData(NumberArrayType.FreeCompanyExchange);
             if (fcExchangeArray == null || fcExchangeArray->AtkArrayData.Size < 10)
                 return (0, 0, 0);
+                
             var currentExp = (uint)fcExchangeArray->IntArray[6];  // 当前经验
             var maxExp = (uint)fcExchangeArray->IntArray[7];      // 当前等级总经验
             var level = (byte)fcExchangeArray->IntArray[4];       // 部队等级
-            var credits = (uint)fcExchangeArray->IntArray[9];     // 部队战绩
 
             return (currentExp, maxExp, level);
         }
@@ -189,14 +190,17 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     {
         if (ImGui.Checkbox("启用经验变化通知", ref ModuleConfig.IsEnabled))
             SaveConfig(ModuleConfig);
+            
         ImGui.SameLine();
         ImGui.TextDisabled("(?)");
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("监控部队经验变化并发送通知");
+            
         ImGui.BeginDisabled(!ModuleConfig.IsEnabled);
         ImGui.SetNextItemWidth(200f * GlobalFontScale);
         if (ImGui.DragInt("通知阈值", ref ModuleConfig.MinExpGainThreshold, 10f, 1, 10000))
             SaveConfig(ModuleConfig);
+            
         ImGui.SameLine();
         ImGui.TextDisabled("(?)");
         if (ImGui.IsItemHovered())
@@ -216,7 +220,7 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         ImGui.SameLine();
         if (ImGui.Button("重置"))
         {
-            RelativePosition = new Vector2(10, 10);
+            RelativePosition = new(10, 10);
             ModuleConfig.RelativePositionX = RelativePosition.X;
             ModuleConfig.RelativePositionY = RelativePosition.Y;
             SaveConfig(ModuleConfig);
@@ -254,16 +258,20 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     {
         var (currentExp, maxExp, level) = GetCurrentFCData();
         if (currentExp == 0 && maxExp == 0) return;
-        RelativePosition = new Vector2(ModuleConfig.RelativePositionX, ModuleConfig.RelativePositionY);
+        
+        RelativePosition = new(ModuleConfig.RelativePositionX, ModuleConfig.RelativePositionY);
         var (fcWindowPos, fcWindowSize) = GetFreeCompanyWindowInfo();
         if (fcWindowPos == Vector2.Zero) return;
+        
         var overlayPos = new Vector2(
             fcWindowPos.X + fcWindowSize.X + RelativePosition.X,
             fcWindowPos.Y + RelativePosition.Y
         );
         var overlaySize = new Vector2(280f * GlobalFontScale, 60f * GlobalFontScale);
+        
         ImGui.SetNextWindowPos(overlayPos, ImGuiCond.Always);
         ImGui.SetNextWindowSize(overlaySize, ImGuiCond.Always);
+        
         var flags = ImGuiWindowFlags.NoMove | 
                    ImGuiWindowFlags.NoResize | 
                    ImGuiWindowFlags.NoCollapse |
@@ -275,6 +283,7 @@ public unsafe class FreeCompanyExp : DailyModuleBase
             var progress = 0f;
             if (maxExp > 0)
                 progress = (float)currentExp / maxExp;
+                
             ImGui.Text($"{currentExp:N0} / {maxExp:N0} ({progress:P1}%)");
             if (maxExp > currentExp)
             {
