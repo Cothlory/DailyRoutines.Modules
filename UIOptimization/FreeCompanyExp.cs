@@ -52,8 +52,6 @@ public unsafe class FreeCompanyExp : DailyModuleBase
             DService.Log.Warning("FreeCompanyExp: Addon is null");
             return;
         }
-        
-        DService.Log.Info("FreeCompanyExp: Addon setup, creating nodes");
         CreateExpNodes(addon);
         UpdateExpDisplay();
     }
@@ -122,10 +120,6 @@ public unsafe class FreeCompanyExp : DailyModuleBase
                 textNode13->TextColor.A / 255f
             );
             originalFontSize = textNode13->FontSize;
-        }
-        else
-        {
-            DService.Log.Warning("FreeCompanyExp: 未找到节点13，使用默认样式");
         }
         
         ExpTextNode = new TextNode
