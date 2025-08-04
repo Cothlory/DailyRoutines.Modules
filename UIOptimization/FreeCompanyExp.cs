@@ -24,6 +24,7 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     private static TextNode? ExpTextNode;
     private static uint lastCurrentExp = 0;
     private static uint lastMaxExp = 0;
+    private static string originalLevelText = "";
     private static ushort originalExpBar14Width = 0;
     private static ushort originalExpBar15Width = 0;
     private static float originalExpBar14X = 0;
@@ -45,6 +46,7 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         FrameworkManager.Unregister(OnUpdate);
         DService.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "FreeCompany", OnFreeCompanyAddonSetup);
         DService.AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, "FreeCompany", OnFreeCompanyAddonFinalize);
+        RestoreOriginalLevelText();
         RestoreOriginalUI();
         ExpTextNode?.Dispose();
         ExpTextNode = null;
@@ -60,12 +62,9 @@ public unsafe class FreeCompanyExp : DailyModuleBase
 
     private void OnFreeCompanyAddonFinalize(AddonEvent type, AddonArgs args)
     {
-        if (ExpTextNode != null)
-        {
-            Service.AddonController.DetachNode(ExpTextNode);
-            ExpTextNode.Dispose();
-            ExpTextNode = null;
-        }
+        RestoreOriginalLevelText();
+        ExpTextNode?.Dispose();
+        ExpTextNode = null;
         lastCurrentExp = 0;
         lastMaxExp = 0;
     }
@@ -106,40 +105,16 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     private unsafe void CreateExpNodes(AtkUnitBase* addon)
     {
         if (ExpTextNode != null) return;
-        ExpTextNode?.Dispose();
-        ExpTextNode = null;
-        var rootNode = addon->RootNode;
-        if (rootNode == null) return;
-        
-        var originalTextColor = new Vector4(204f/255f, 204f/255f, 204f/255f, 1f);
-        byte originalFontSize = 14;
         
         var expLevelTextNode = addon->GetNodeById(13);
         if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text)
         {
             var textNode = (AtkTextNode*)expLevelTextNode;
-            originalTextColor = new Vector4(
-                textNode->TextColor.R / 255f,
-                textNode->TextColor.G / 255f,
-                textNode->TextColor.B / 255f,
-                textNode->TextColor.A / 255f
-            );
-            originalFontSize = textNode->FontSize;
+            originalLevelText = textNode->NodeText.ToString();
         }
-        ModifyExpBar(addon);
         
-        ExpTextNode = new TextNode
-        {
-            Text = "经验值 0/0 (0.0%)",
-            FontSize = originalFontSize,
-            IsVisible = true,
-            TextColor = originalTextColor,
-            TextFlags = TextFlags.AutoAdjustNodeSize,
-            AlignmentType = AlignmentType.Left,
-            Position = new Vector2(350f, 125f),
-            NodeId = 999001
-        };
-        Service.AddonController.AttachNode(ExpTextNode, rootNode);
+        ModifyExpBar(addon);
+        UpdateExpDisplay();
     }
     
     private unsafe void ModifyExpBar(AtkUnitBase* addon)
@@ -158,7 +133,14 @@ public unsafe class FreeCompanyExp : DailyModuleBase
             originalExpBar15X = maxExpBarNode->X;
         }
         if (expLevelTextNode != null)
+        {
             originalExpLevelTextX = expLevelTextNode->X;
+            if (string.IsNullOrEmpty(originalLevelText) && expLevelTextNode->Type == NodeType.Text)
+            {
+                var textNode = (AtkTextNode*)expLevelTextNode;
+                originalLevelText = textNode->NodeText.ToString();
+            }
+        }
         
         var originalExpBarWidth = currentExpBarNode != null ? currentExpBarNode->Width : 0;
         var expBarOffset = originalExpBarWidth;
@@ -203,17 +185,23 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         }
     }
     
-    private void UpdateExpDisplay()
+    private unsafe void UpdateExpDisplay()
     {
-        if (ExpTextNode == null) return;
+        if (!IsAddonAndNodesReady(FreeCompany)) return;
+        
+        var addon = (AtkUnitBase*)FreeCompany;
+        var expLevelTextNode = addon->GetNodeById(13);
+        if (expLevelTextNode == null || expLevelTextNode->Type != NodeType.Text) return;
         
         var (currentExp, maxExp, level) = GetCurrentFCData();
         if (currentExp == 0 && maxExp == 0) return;
         
         var progress = maxExp > 0 ? (float)currentExp / maxExp * 100 : 0f;
-        var newText = $"经验值 {currentExp:N0}/{maxExp:N0} ({progress:F1}%)";
-        
-        ExpTextNode.Text = newText;
+        var expText = $"经验值 {currentExp:N0}/{maxExp:N0} ({progress:F1}%)";
+        var newText = $"{originalLevelText}    {expText}";
+        var textNode = (AtkTextNode*)expLevelTextNode;
+        textNode->SetText(newText);
+        expLevelTextNode->DrawFlags |= 0x1;
     }
     
     private unsafe void RestoreOriginalUI()
@@ -244,6 +232,11 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text && originalExpBar14Width > 0)
         {
             expLevelTextNode->SetXFloat(originalExpLevelTextX);
+            if (!string.IsNullOrEmpty(originalLevelText))
+            {
+                var textNode = (AtkTextNode*)expLevelTextNode;
+                textNode->SetText(originalLevelText);
+            }
             expLevelTextNode->DrawFlags |= 0x1;
         }
         originalExpBar14Width = 0;
@@ -251,6 +244,21 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         originalExpBar14X = 0f;
         originalExpBar15X = 0f;
         originalExpLevelTextX = 0f;
+        originalLevelText = "";
+    }
+    
+    private unsafe void RestoreOriginalLevelText()
+    {
+        if (!IsAddonAndNodesReady(FreeCompany) || string.IsNullOrEmpty(originalLevelText)) return;
+        
+        var addon = (AtkUnitBase*)FreeCompany;
+        var expLevelTextNode = addon->GetNodeById(13);
+        if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text)
+        {
+            var textNode = (AtkTextNode*)expLevelTextNode;
+            textNode->SetText(originalLevelText);
+            expLevelTextNode->DrawFlags |= 0x1;
+        }
     }
 
     private void TryRefreshFCData()
