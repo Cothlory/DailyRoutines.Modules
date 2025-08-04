@@ -1,12 +1,9 @@
-using System;
-using System.Numerics;
 using DailyRoutines.Abstracts;
 using DailyRoutines.Managers;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using ImGuiNET;
 using KamiToolKit.Nodes;
 
 namespace DailyRoutines.ModulesPublic;
@@ -22,14 +19,14 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     };
 
     private static TextNode? ExpTextNode;
-    private static uint lastCurrentExp = 0;
-    private static uint lastMaxExp = 0;
-    private static string originalLevelText = "";
-    private static ushort originalExpBar14Width = 0;
-    private static ushort originalExpBar15Width = 0;
-    private static float originalExpBar14X = 0;
-    private static float originalExpBar15X = 0;
-    private static float originalExpLevelTextX = 0;
+    private static uint lastCurrentExp;
+    private static uint lastMaxExp;
+    private static string originalLevelText = string.Empty;
+    private static ushort originalExpBar14Width;
+    private static ushort originalExpBar15Width;
+    private static float originalExpBar14X;
+    private static float originalExpBar15X;
+    private static float originalExpLevelTextX;
 
     protected override void Init()
     {
@@ -46,18 +43,18 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         FrameworkManager.Unregister(OnUpdate);
         DService.AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, "FreeCompany", OnFreeCompanyAddonSetup);
         DService.AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, "FreeCompany", OnFreeCompanyAddonFinalize);
-        RestoreOriginalLevelText();
+        
         RestoreOriginalUI();
         ExpTextNode?.Dispose();
         ExpTextNode = null;
+        
         base.Uninit();
     }
 
     private void OnFreeCompanyAddonSetup(AddonEvent type, AddonArgs args)
     {
         var addon = (AtkUnitBase*)FreeCompany;
-        CreateExpNodes(addon);
-        UpdateExpDisplay();
+        SetupExpDisplay(addon);
     }
 
     private void OnFreeCompanyAddonFinalize(AddonEvent type, AddonArgs args)
@@ -71,18 +68,17 @@ public unsafe class FreeCompanyExp : DailyModuleBase
 
     private void OnUpdate(Dalamud.Plugin.Services.IFramework framework)
     {
-        if (!DService.ClientState.IsLoggedIn) return;
+        if (!DService.ClientState.IsLoggedIn || !IsAddonAndNodesReady(FreeCompany)) 
+            return;
+
+        TryRefreshFCData();
+        var (currentExp, maxExp, level) = GetCurrentFCData();
         
-        if (IsAddonAndNodesReady(FreeCompany))
+        if (currentExp != lastCurrentExp || maxExp != lastMaxExp)
         {
-            TryRefreshFCData();
-            var (currentExp, maxExp, level) = GetCurrentFCData();
-            if (currentExp != lastCurrentExp || maxExp != lastMaxExp)
-            {
-                lastCurrentExp = currentExp;
-                lastMaxExp = maxExp;
-                UpdateExpDisplay();
-            }
+            lastCurrentExp = currentExp;
+            lastMaxExp = maxExp;
+            UpdateExpDisplay();
         }
     }
 
@@ -102,21 +98,25 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         return (currentExp, maxExp, level);
     }
 
-    private unsafe void CreateExpNodes(AtkUnitBase* addon)
+    private unsafe void SetupExpDisplay(AtkUnitBase* addon)
     {
         if (ExpTextNode != null) return;
         
-        var expLevelTextNode = addon->GetNodeById(13);
-        if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text)
-        {
-            var textNode = (AtkTextNode*)expLevelTextNode;
-            var currentText = textNode->NodeText.ToString();
-            if (string.IsNullOrEmpty(originalLevelText) || !currentText.Contains("经验值"))
-                originalLevelText = currentText;
-        }
-        
+        SaveOriginalLevelText(addon);
         ModifyExpBar(addon);
         UpdateExpDisplay();
+    }
+
+    private unsafe void SaveOriginalLevelText(AtkUnitBase* addon)
+    {
+        var expLevelTextNode = addon->GetNodeById(13);
+        if (expLevelTextNode == null || expLevelTextNode->Type != NodeType.Text) return;
+
+        var textNode = (AtkTextNode*)expLevelTextNode;
+        var currentText = textNode->NodeText.ToString();
+        
+        if (string.IsNullOrEmpty(originalLevelText) || !currentText.Contains("经验值"))
+            originalLevelText = currentText;
     }
     
     private unsafe void ModifyExpBar(AtkUnitBase* addon)
@@ -124,67 +124,55 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         var currentExpBarNode = addon->GetNodeById(14);
         var maxExpBarNode = addon->GetNodeById(15);
         var expLevelTextNode = addon->GetNodeById(13);
+        SaveOriginalBarStates(currentExpBarNode, maxExpBarNode, expLevelTextNode);
+        var originalExpBarWidth = currentExpBarNode != null ? currentExpBarNode->Width : (ushort)0;
+        ModifyExpBarNode(currentExpBarNode, originalExpBarWidth);
+        ModifyExpBarNode(maxExpBarNode, originalExpBarWidth);
+        ModifyLevelTextPosition(expLevelTextNode, originalExpBarWidth);
+    }
+
+    private unsafe void SaveOriginalBarStates(AtkResNode* currentExpBarNode, AtkResNode* maxExpBarNode, AtkResNode* expLevelTextNode)
+    {
         if (currentExpBarNode != null)
         {
             originalExpBar14Width = currentExpBarNode->Width;
             originalExpBar14X = currentExpBarNode->X;
         }
+        
         if (maxExpBarNode != null)
         {
             originalExpBar15Width = maxExpBarNode->Width;
             originalExpBar15X = maxExpBarNode->X;
         }
+        
         if (expLevelTextNode != null)
-        {
             originalExpLevelTextX = expLevelTextNode->X;
-            if (string.IsNullOrEmpty(originalLevelText) && expLevelTextNode->Type == NodeType.Text)
-            {
-                var textNode = (AtkTextNode*)expLevelTextNode;
-                originalLevelText = textNode->NodeText.ToString();
-            }
-        }
+    }
+
+    private unsafe void ModifyExpBarNode(AtkResNode* barNode, ushort originalWidth)
+    {
+        if (barNode == null) return;
+
+        var newWidth = (ushort)(originalWidth * 2f);
+        var newX = (short)(barNode->X - originalWidth);
         
-        var originalExpBarWidth = currentExpBarNode != null ? currentExpBarNode->Width : 0;
-        var expBarOffset = originalExpBarWidth;
+        barNode->SetWidth(newWidth);
+        barNode->SetXFloat(newX);
         
-        // 进度条
-        if (currentExpBarNode != null)
-        {
-            var originalWidth = currentExpBarNode->Width;
-            var newWidth = (ushort)(originalWidth * 2f);
-            var originalX = currentExpBarNode->X;
-            var newX = (short)(originalX - originalWidth);
-            currentExpBarNode->SetWidth(newWidth);
-            currentExpBarNode->SetXFloat(newX);
-            var nineGridNode = (AtkNineGridNode*)currentExpBarNode;
-            nineGridNode->AtkResNode.SetWidth(newWidth);
-            nineGridNode->AtkResNode.SetXFloat(newX);
-            currentExpBarNode->DrawFlags |= 0x1;
-        }
+        var nineGridNode = (AtkNineGridNode*)barNode;
+        nineGridNode->AtkResNode.SetWidth(newWidth);
+        nineGridNode->AtkResNode.SetXFloat(newX);
         
-        // 背景条
-        if (maxExpBarNode != null)
-        {
-            var originalWidth = maxExpBarNode->Width;
-            var newWidth = (ushort)(originalWidth * 2f);
-            var originalX = maxExpBarNode->X;
-            var newX = (short)(originalX - originalWidth);
-            maxExpBarNode->SetWidth(newWidth);
-            maxExpBarNode->SetXFloat(newX);
-            var nineGridNode = (AtkNineGridNode*)maxExpBarNode;
-            nineGridNode->AtkResNode.SetWidth(newWidth);
-            nineGridNode->AtkResNode.SetXFloat(newX);
-            maxExpBarNode->DrawFlags |= 0x1;
-        }
-        
-        // 等级
-        if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text)
-        {
-            var originalX = expLevelTextNode->X;
-            var newX = (short)(originalX - expBarOffset);
-            expLevelTextNode->SetXFloat(newX);
-            expLevelTextNode->DrawFlags |= 0x1;
-        }
+        barNode->DrawFlags |= 0x1;
+    }
+
+    private unsafe void ModifyLevelTextPosition(AtkResNode* textNode, ushort expBarOffset)
+    {
+        if (textNode == null || textNode->Type != NodeType.Text) return;
+
+        var newX = (short)(textNode->X - expBarOffset);
+        textNode->SetXFloat(newX);
+        textNode->DrawFlags |= 0x1;
     }
     
     private unsafe void UpdateExpDisplay()
@@ -194,23 +182,24 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         var addon = (AtkUnitBase*)FreeCompany;
         var expLevelTextNode = addon->GetNodeById(13);
         if (expLevelTextNode == null || expLevelTextNode->Type != NodeType.Text) return;
-        
         var (currentExp, maxExp, level) = GetCurrentFCData();
         if (currentExp == 0 && maxExp == 0) return;
-        if (string.IsNullOrEmpty(originalLevelText))
-        {
-            var textNode = (AtkTextNode*)expLevelTextNode;
-            var currentText = textNode->NodeText.ToString();
-            if (!currentText.Contains("经验值"))
-                originalLevelText = currentText;
-        }
-        
+        EnsureOriginalLevelText(expLevelTextNode);
         var progress = maxExp > 0 ? (float)currentExp / maxExp * 100 : 0f;
         var expText = $"经验值 {currentExp:N0}/{maxExp:N0} ({progress:F1}%)";
         var newText = $"{originalLevelText}    {expText}";
-        var textNode2 = (AtkTextNode*)expLevelTextNode;
-        textNode2->SetText(newText);
+        var textNode = (AtkTextNode*)expLevelTextNode;
+        textNode->SetText(newText);
         expLevelTextNode->DrawFlags |= 0x1;
+    }
+
+    private unsafe void EnsureOriginalLevelText(AtkResNode* expLevelTextNode)
+    {
+        if (!string.IsNullOrEmpty(originalLevelText)) return;
+        var textNode = (AtkTextNode*)expLevelTextNode;
+        var currentText = textNode->NodeText.ToString();
+        if (!currentText.Contains("经验值"))
+            originalLevelText = currentText;
     }
     
     private unsafe void RestoreOriginalUI()
@@ -220,61 +209,60 @@ public unsafe class FreeCompanyExp : DailyModuleBase
         var currentExpBarNode = addon->GetNodeById(14);
         var maxExpBarNode = addon->GetNodeById(15);
         var expLevelTextNode = addon->GetNodeById(13);
-        if (currentExpBarNode != null && originalExpBar14Width > 0)
+        RestoreExpBarNode(currentExpBarNode, originalExpBar14Width, originalExpBar14X);
+        RestoreExpBarNode(maxExpBarNode, originalExpBar15Width, originalExpBar15X);
+        RestoreLevelTextNode(expLevelTextNode);
+        ClearOriginalStates();
+    }
+
+    private unsafe void RestoreExpBarNode(AtkResNode* barNode, ushort originalWidth, float originalX)
+    {
+        if (barNode == null || originalWidth == 0) return;
+        barNode->SetWidth(originalWidth);
+        barNode->SetXFloat(originalX);
+        var nineGridNode = (AtkNineGridNode*)barNode;
+        nineGridNode->AtkResNode.SetWidth(originalWidth);
+        nineGridNode->AtkResNode.SetXFloat(originalX);
+        barNode->DrawFlags |= 0x1;
+    }
+
+    private unsafe void RestoreLevelTextNode(AtkResNode* textNode)
+    {
+        if (textNode == null || textNode->Type != NodeType.Text || originalExpBar14Width == 0) return;
+        textNode->SetXFloat(originalExpLevelTextX);
+        if (!string.IsNullOrEmpty(originalLevelText))
         {
-            currentExpBarNode->SetWidth(originalExpBar14Width);
-            currentExpBarNode->SetXFloat(originalExpBar14X);
-            var nineGridNode = (AtkNineGridNode*)currentExpBarNode;
-            nineGridNode->AtkResNode.SetWidth(originalExpBar14Width);
-            nineGridNode->AtkResNode.SetXFloat(originalExpBar14X);
-            currentExpBarNode->DrawFlags |= 0x1;
+            var atkTextNode = (AtkTextNode*)textNode;
+            atkTextNode->SetText(originalLevelText);
         }
-        if (maxExpBarNode != null && originalExpBar15Width > 0)
-        {
-            maxExpBarNode->SetWidth(originalExpBar15Width);
-            maxExpBarNode->SetXFloat(originalExpBar15X);
-            var nineGridNode = (AtkNineGridNode*)maxExpBarNode;
-            nineGridNode->AtkResNode.SetWidth(originalExpBar15Width);
-            nineGridNode->AtkResNode.SetXFloat(originalExpBar15X);
-            maxExpBarNode->DrawFlags |= 0x1;
-        }
-        if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text && originalExpBar14Width > 0)
-        {
-            expLevelTextNode->SetXFloat(originalExpLevelTextX);
-            if (!string.IsNullOrEmpty(originalLevelText))
-            {
-                var textNode = (AtkTextNode*)expLevelTextNode;
-                textNode->SetText(originalLevelText);
-            }
-            expLevelTextNode->DrawFlags |= 0x1;
-        }
+        textNode->DrawFlags |= 0x1;
+    }
+
+    private void ClearOriginalStates()
+    {
         originalExpBar14Width = 0;
         originalExpBar15Width = 0;
         originalExpBar14X = 0f;
         originalExpBar15X = 0f;
         originalExpLevelTextX = 0f;
-        originalLevelText = "";
+        originalLevelText = string.Empty;
     }
     
     private unsafe void RestoreOriginalLevelText()
     {
         if (!IsAddonAndNodesReady(FreeCompany) || string.IsNullOrEmpty(originalLevelText)) return;
-        
         var addon = (AtkUnitBase*)FreeCompany;
         var expLevelTextNode = addon->GetNodeById(13);
-        if (expLevelTextNode != null && expLevelTextNode->Type == NodeType.Text)
-        {
-            var textNode = (AtkTextNode*)expLevelTextNode;
-            textNode->SetText(originalLevelText);
-            expLevelTextNode->DrawFlags |= 0x1;
-        }
+        if (expLevelTextNode == null || expLevelTextNode->Type != NodeType.Text) return;
+        var textNode = (AtkTextNode*)expLevelTextNode;
+        textNode->SetText(originalLevelText);
+        expLevelTextNode->DrawFlags |= 0x1;
     }
 
     private void TryRefreshFCData()
     {
         var infoModule = InfoModule.Instance();
         if (infoModule == null) return;
-
         var fcInfoProxy = infoModule->GetInfoProxyById(InfoProxyId.FreeCompany);
         if (fcInfoProxy == null) return;
         var localPlayer = DService.ClientState.LocalPlayer;
