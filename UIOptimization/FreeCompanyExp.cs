@@ -22,10 +22,12 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     };
 
     private static TextNode? ExpTextNode;
+    private static uint lastCurrentExp = 0;
+    private static uint lastMaxExp = 0;
 
     protected override void Init()
     {
-        FrameworkManager.Register(OnUpdate, throttleMS: 30_000);
+        FrameworkManager.Register(OnUpdate, throttleMS: 1_000);
         DService.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "FreeCompany", OnFreeCompanyAddonSetup);
         DService.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, "FreeCompany", OnFreeCompanyAddonFinalize);
         
@@ -59,14 +61,25 @@ public unsafe class FreeCompanyExp : DailyModuleBase
             ExpTextNode.Dispose();
             ExpTextNode = null;
         }
+        lastCurrentExp = 0;
+        lastMaxExp = 0;
     }
 
     private void OnUpdate(Dalamud.Plugin.Services.IFramework framework)
     {
         if (!DService.ClientState.IsLoggedIn) return;
         
-        TryRefreshFCData();
-        UpdateExpDisplay();
+        if (IsAddonAndNodesReady(FreeCompany) && ExpTextNode != null)
+        {
+            TryRefreshFCData();
+            var (currentExp, maxExp, level) = GetCurrentFCData();
+            if (currentExp != lastCurrentExp || maxExp != lastMaxExp)
+            {
+                lastCurrentExp = currentExp;
+                lastMaxExp = maxExp;
+                UpdateExpDisplay();
+            }
+        }
     }
 
     private (uint currentExp, uint maxExp, byte level) GetCurrentFCData()
@@ -175,10 +188,14 @@ public unsafe class FreeCompanyExp : DailyModuleBase
     private void UpdateExpDisplay()
     {
         if (ExpTextNode == null) return;
+        
         var (currentExp, maxExp, level) = GetCurrentFCData();
         if (currentExp == 0 && maxExp == 0) return;
+        
         var progress = maxExp > 0 ? (float)currentExp / maxExp * 100 : 0f;
-        ExpTextNode.Text = $"经验值 {currentExp:N0}/{maxExp:N0} ({progress:F1}%)";
+        var newText = $"经验值 {currentExp:N0}/{maxExp:N0} ({progress:F1}%)";
+        
+        ExpTextNode.Text = newText;
     }
 
     private void TryRefreshFCData()
